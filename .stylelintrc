@@ -1,14 +1,16 @@
 {
   "extends": [
     "stylelint-config-standard",
+    "stylelint-config-tailwindcss",
     "stylelint-config-clean-order",
     "stylelint-prettier/recommended"
   ],
+  "rules": {
+    "at-rule-no-deprecated": [true, { "ignoreAtRules": ["apply"] }]
+  },
   "overrides": [
     {
-      "files": [
-        "**/*.{js,jsx,ts,tsx}"
-      ],
+      "files": ["**/*.{js,jsx,ts,tsx}"],
       "customSyntax": "postcss-styled-syntax"
     }
   ]
