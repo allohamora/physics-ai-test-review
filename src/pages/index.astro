@@ -1,8 +1,9 @@
 ---
 import Layout from '../layouts/layout.astro';
+import { IndexPage } from '../components/pages/index';
 import '../styles/global.css';
 ---
 
 <Layout title="Home">
-	<div>Hello World!</div>
+	<IndexPage client:load />
 </Layout>
