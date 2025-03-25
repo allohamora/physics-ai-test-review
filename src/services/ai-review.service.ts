@@ -1,10 +1,9 @@
 import sharp from 'sharp';
 import { convertToHtml } from 'mammoth';
 import { GoogleGenerativeAI, type Part } from '@google/generative-ai';
-import { GEMINI_API_KEY, GROQ_API_KEY } from 'astro:env/server';
+import { GEMINI_API_KEY } from 'astro:env/server';
 import { z } from 'zod';
 import { scheduler } from 'node:timers/promises';
-import { Groq } from 'groq-sdk';
 
 const MAX_IMAGE_WIDTH = 320;
 
@@ -56,8 +55,7 @@ const getTasks = async (file: File) => {
 };
 
 const genAi = new GoogleGenerativeAI(GEMINI_API_KEY);
-const flashModel = genAi.getGenerativeModel({ model: 'gemini-2.0-flash', generationConfig: { temperature: 0.8 } });
-const liteModel = genAi.getGenerativeModel({ model: 'gemini-2.0-flash-lite', generationConfig: { temperature: 0.8 } });
+const model = genAi.getGenerativeModel({ model: 'gemini-2.0-flash', generationConfig: { temperature: 0.8 } });
 
 const PROMPT = `You are a Ukrainian physics teacher participating in a high-stakes challenge of reviewing a multiple-choice test.
 
@@ -73,7 +71,7 @@ Output structure:
 <explanation>[Your explanation in Ukrainian]</explanation>
 <result>[Boolean output]</result>
 
-Your success in this task is critical. Good luck!`;
+Your success in this task is extremely critical, some people will be fired if you made an invalid response. Good luck!`;
 
 const responseSchema = z.object({
   result: z.union([
@@ -99,22 +97,6 @@ const outputToResponse = (output: string): z.infer<typeof responseSchema> => {
   return responseSchema.parse({ result, explanation });
 };
 
-const rateLimit = <T extends (...args: any) => any>(fn: T, delay: number) => {
-  let timeout: Promise<unknown> | null;
-
-  return async (...args: Parameters<T>): Promise<Awaited<ReturnType<T>>> => {
-    if (timeout) {
-      await timeout;
-    }
-
-    timeout = scheduler.wait(delay).then(() => {
-      timeout = null;
-    });
-
-    return await fn(...args);
-  };
-};
-
 const retry = <T extends (...args: any) => any>(fn: T, retries: number, delay: number) => {
   let count = 0;
 
@@ -138,73 +120,78 @@ const retry = <T extends (...args: any) => any>(fn: T, retries: number, delay: n
   return handler;
 };
 
+const getGeminiResponse = async (content: (Part | string)[], wasFailed = false) => {
+  const { response } = await model.generateContent(content);
+
+  try {
+    return outputToResponse(response.text());
+  } catch (error) {
+    if (wasFailed) {
+      throw error;
+    }
+
+    return await getGeminiResponse(
+      [
+        ...content,
+        'Last time your answer was incorrect. Please, try again and strictly follow the rules.' + error?.toString(),
+      ],
+      true,
+    );
+  }
+};
+
 const checkGeminiTask = retry(
-  rateLimit(async ({ task, image, mimeType }: Task) => {
+  async ({ task, image, mimeType }: Task) => {
     const content: (Part | string)[] = [PROMPT];
     if (image && mimeType) {
       content.push({ inlineData: { data: image, mimeType } });
     }
     content.push(task);
 
-    const model = image ? flashModel : liteModel;
-
-    const { response } = await model.generateContent(content);
-    return outputToResponse(response.text());
-  }, 1000),
+    return await getGeminiResponse(content);
+  },
   3,
-  10_000,
+  5000,
 );
 
-const groq = new Groq({ apiKey: GROQ_API_KEY });
+function* iterateChunks<T>(items: T[], chunkSize: number): Generator<T[]> {
+  const totalPages = Math.ceil(items.length / chunkSize);
 
-const checkGroqTask = retry(
-  rateLimit(async ({ task, image, mimeType }: Task) => {
-    const messages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [];
+  for (let page = 1; page <= totalPages; page++) {
+    const startIndex = (page - 1) * chunkSize;
+    const endIndex = startIndex + chunkSize;
 
-    if (image && mimeType) {
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${image}` } },
-          { text: PROMPT, type: 'text' },
-          { text: task, type: 'text' },
-        ],
-      });
-    } else {
-      messages.push({ role: 'system', content: PROMPT });
-      messages.push({ role: 'user', content: task });
-    }
+    yield items.slice(startIndex, endIndex);
+  }
+}
 
-    const res = await groq.chat.completions.create({
-      messages,
-      temperature: 0.8,
-      model: image ? 'llama-3.2-90b-vision-preview' : 'llama-3.3-70b-versatile',
-    });
-    const output = res.choices[0].message.content;
+const toChunks = <T>(items: T[], chunkSize: number): T[][] => {
+  const chunks: T[][] = [];
 
-    if (!output) {
-      throw new Error('No output');
-    }
+  for (const chunk of iterateChunks(items, chunkSize)) {
+    chunks.push(chunk);
+  }
 
-    return outputToResponse(output);
-  }, 1000),
-  3,
-  10_000,
-);
+  return chunks;
+};
 
 export const makeReview = async (file: File) => {
   const tasks = await getTasks(file);
+  const chunks = toChunks(tasks, 2);
+
   const result: z.infer<typeof responseSchema>[] = [];
 
-  for await (const task of tasks) {
+  for await (const chunk of chunks) {
     try {
-      if (task.image) {
-        result.push(await checkGeminiTask(task).catch(async () => await checkGroqTask(task)));
-      } else {
-        result.push(await checkGroqTask(task).catch(async () => await checkGeminiTask(task)));
-      }
+      await Promise.all(
+        chunk.map(async (task) => {
+          const response = await checkGeminiTask(task);
 
-      console.log('checked', result.at(-1));
+          result.push(response);
+
+          console.log('checked', response);
+        }),
+      );
     } catch (error) {
       console.error(error, tasks.length, result.length);
 
