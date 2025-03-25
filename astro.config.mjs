@@ -12,7 +12,6 @@ export default defineConfig({
   env: {
     schema: {
       GEMINI_API_KEY: envField.string({ context: 'server', access: 'secret' }),
-      GROQ_API_KEY: envField.string({ context: 'server', access: 'secret' }),
     },
   },
   integrations: [react(), tailwind()],
