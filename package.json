@@ -16,6 +16,7 @@
     "csslint:fix": "stylelint \"src/**/*.{css,ts,tsx}\" --fix"
   },
   "dependencies": {
+    "@ai-zen/node-fetch-event-source": "^2.1.4",
     "@astrojs/react": "^4.2.1",
     "@astrojs/tailwind": "^6.0.0",
     "@astrojs/vercel": "^8.1.0",

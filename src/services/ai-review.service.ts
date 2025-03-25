@@ -97,7 +97,7 @@ const outputToResponse = (output: string): z.infer<typeof responseSchema> => {
   return responseSchema.parse({ result, explanation });
 };
 
-const retry = <T extends (...args: any) => any>(fn: T, retries: number, delay: number) => {
+const retry = <T extends (...args: any) => any>(fn: T, retries: number, getDelay: (count: number) => number) => {
   let count = 0;
 
   const handler = async (...args: Parameters<T>): Promise<Awaited<ReturnType<T>>> => {
@@ -111,7 +111,7 @@ const retry = <T extends (...args: any) => any>(fn: T, retries: number, delay: n
       count++;
 
       console.error(error, ...args);
-      await scheduler.wait(delay * count);
+      await scheduler.wait(getDelay(count));
 
       return await handler(...args);
     }
@@ -133,7 +133,8 @@ const getGeminiResponse = async (content: (Part | string)[], wasFailed = false) 
     return await getGeminiResponse(
       [
         ...content,
-        'Last time your answer was incorrect. Please, try again and strictly follow the rules.' + error?.toString(),
+        'please, make sure you provided result in <result></result> tags and explanation in <explanation></explanation> tags in your output it is critical. error: ' +
+          error?.toString(),
       ],
       true,
     );
@@ -151,7 +152,7 @@ const checkGeminiTask = retry(
     return await getGeminiResponse(content);
   },
   3,
-  5000,
+  (count) => count * 5000,
 );
 
 function* iterateChunks<T>(items: T[], chunkSize: number): Generator<T[]> {
@@ -175,29 +176,17 @@ const toChunks = <T>(items: T[], chunkSize: number): T[][] => {
   return chunks;
 };
 
-export const makeReview = async (file: File) => {
+export async function* makerReview(file: File) {
   const tasks = await getTasks(file);
-  const chunks = toChunks(tasks, 2);
-
-  const result: z.infer<typeof responseSchema>[] = [];
+  const chunks = toChunks(tasks, 5);
 
   for await (const chunk of chunks) {
     try {
-      await Promise.all(
-        chunk.map(async (task) => {
-          const response = await checkGeminiTask(task);
-
-          result.push(response);
-
-          console.log('checked', response);
-        }),
-      );
+      yield* await Promise.all(chunk.map(async (task) => await checkGeminiTask(task)));
     } catch (error) {
-      console.error(error, tasks.length, result.length);
+      console.error(error);
 
       throw error;
     }
   }
-
-  return result;
-};
+}
