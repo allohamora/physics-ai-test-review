@@ -155,38 +155,18 @@ const checkGeminiTask = retry(
   (count) => count * 5000,
 );
 
-function* iterateChunks<T>(items: T[], chunkSize: number): Generator<T[]> {
-  const totalPages = Math.ceil(items.length / chunkSize);
-
-  for (let page = 1; page <= totalPages; page++) {
-    const startIndex = (page - 1) * chunkSize;
-    const endIndex = startIndex + chunkSize;
-
-    yield items.slice(startIndex, endIndex);
-  }
-}
-
-const toChunks = <T>(items: T[], chunkSize: number): T[][] => {
-  const chunks: T[][] = [];
-
-  for (const chunk of iterateChunks(items, chunkSize)) {
-    chunks.push(chunk);
-  }
-
-  return chunks;
-};
-
-export async function* makerReview(file: File) {
+export const makeReview = async (file: File) => {
   const tasks = await getTasks(file);
-  const chunks = toChunks(tasks, 5);
 
-  for await (const chunk of chunks) {
-    try {
-      yield* await Promise.all(chunk.map(async (task) => await checkGeminiTask(task)));
-    } catch (error) {
-      console.error(error);
+  return await Promise.all(
+    tasks.map(async (task) => {
+      try {
+        return await checkGeminiTask(task);
+      } catch (error) {
+        console.error(error);
 
-      throw error;
-    }
-  }
-}
+        throw error;
+      }
+    }),
+  );
+};
