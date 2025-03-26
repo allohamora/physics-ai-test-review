@@ -6,6 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { ArrowUp } from 'lucide-react';
 import { Input } from './ui/input';
 import type { FC } from 'react';
+import { UPLOAD_FORM } from '@/i18n/content';
 
 const FormSchema = z.object({
   file: z.instanceof(File),
@@ -31,11 +32,11 @@ export const UploadForm: FC<UploadFormProps> = ({ onSubmit }) => {
             render={({ field }) => (
               <FormItem>
                 <div className="space-y-5">
-                  <FormLabel className="block text-center text-3xl">File</FormLabel>
+                  <FormLabel className="block text-center text-3xl">{UPLOAD_FORM.FILE}</FormLabel>
                   <div className="flex space-x-2 rounded-md">
                     <FormControl>
                       <Input
-                        placeholder="Select your docx file with tests"
+                        placeholder={UPLOAD_FORM.FILE_PLACEHOLDER}
                         className="max-w-[500px] resize-none ring-0"
                         accept=".docx"
                         multiple={false}

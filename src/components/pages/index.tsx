@@ -4,6 +4,7 @@ import { Loader } from '../ui/loader';
 import { actions } from 'astro:actions';
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../ui/accordion';
+import { INDEX_PAGE } from '@/i18n/content';
 
 type ReviewItem = {
   result: boolean;
@@ -26,7 +27,7 @@ export const IndexPage: FC = () => {
           const { data, error } = await actions.makeReview(formData);
 
           if (error) {
-            toast({ title: 'An error occurred', description: error.message, variant: 'destructive' });
+            toast({ title: INDEX_PAGE.AN_ERROR_OCCURRED, description: error.message, variant: 'destructive' });
           } else {
             setReviewItems(data);
           }
@@ -45,7 +46,7 @@ export const IndexPage: FC = () => {
             {reviewItems?.map((item, idx) => (
               <AccordionItem value={`item=${idx}`} key={idx}>
                 <AccordionTrigger className="hover:no-underline">
-                  ({item.result ? '✅' : '❌'}) {idx + 1} task
+                  ({item.result ? '✅' : '❌'}) {idx + 1} {INDEX_PAGE.TASK.toLowerCase()}
                 </AccordionTrigger>
                 <AccordionContent>{item.explanation}</AccordionContent>
               </AccordionItem>
